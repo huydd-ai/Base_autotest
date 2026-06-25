@@ -1,53 +1,68 @@
-# Puzzle game test harness (Airtest + pytest)
+# pixon — puzzle game test framework (Airtest + pytest)
 
-Image-template UI tests for a Unity puzzle game running on **LDPlayer**.
-Airtest is used as-is (image recognition + touch); pytest organizes and runs cases.
+UI automation for a Unity puzzle game on **LDPlayer**. Page Object Model, Airtest
+image-template matching, pytest runner. Layered: `Test → flows → pages → common`,
+with `common`/`airtouch_fast` forbidden from importing upward (enforced by import-linter).
 
 ## Setup
 ```bash
-pip install -r requirements.txt
+pip install -r requirements.txt          # runtime
+pip install -r requirements-dev.txt      # + pylint/mypy/import-linter
+pip install -e .                         # make `pixon` importable
+cp .env.example .env                      # optional; edit values
 ```
 
-## Connect LDPlayer
-1. Start your LDPlayer instance and install the game APK.
-2. Connect adb (instance 0 default port):
-   ```bash
-   adb connect 127.0.0.1:5555
-   adb devices            # should list 127.0.0.1:5555
-   ```
-   Other instances use 5557, 5559, ... — update `DEVICE_URI` accordingly.
-3. Find the package name and set it:
-   ```bash
-   adb shell pm list packages | findstr <part-of-name>
-   set APP_PACKAGE=com.yourcompany.puzzle      # Windows; export on Linux/mac
-   ```
+## Add a game (the whole point)
+The framework is game-pluggable: shared page objects, **per-game profile + image pack**.
+Adding a game touches no framework code.
 
-## Add your screenshots
-Crop real game screens into `images/` as PNGs: `main_menu.png`, `btn_play.png`,
-`board.png` (these are the names `tests/test_puzzle_smoke.py` expects). Add more
-crops and reference them by bare name in new tests.
+```bash
+adb connect 127.0.0.1:5555                          # LDPlayer instance 0
+adb shell pm list packages | findstr <name>         # find the package
+
+python scripts/add_game.py mygame --package com.foo.bar
+# -> creates games/mygame/game.json + games/mygame/images/
+```
+Then crop real screens into `games/mygame/images/` as PNGs, referenced by bare name
+(`main_menu`, `btn_play`, `board`, ...) in page objects/tests, and run:
+```bash
+GAME=mygame pytest          # Windows: set GAME=mygame && pytest
+```
+`GAME` selects the profile (default `demo`). `DEVICE_URI`/`APP_PACKAGE` env vars
+override the profile. A missing/half-set game fails loud at the `device` fixture.
 
 ## Run
 ```bash
-pytest                 # all tests
-pytest -k smoke        # just the smoke case
-pytest tests/test_helpers_pathing.py   # no device needed
+pytest                                  # all suites
+pytest -m daily_mission                 # one suite
+pytest Test/test_framework_selfcheck.py # no device needed
+lint-imports                            # check the layering contract
 ```
 
 ## Layout
-Base code lives in `base/`; root holds only this README, `requirements.txt`, `pytest.ini`.
+```
+pixon/
+  common/      actions, ocr, log, config, sync, adb_utils, *_watchdog   (lowest layer)
+  flows/       test_flow — orchestration ABOVE pages (lifted out of common)
+  pages/       Page Object Model (+ components/, popup/, images/)
+  custom/      empty on purpose (YAGNI until a real override exists)
+  airtouch_fast/  minitouch/minicap fast input (fallback: airtest touch)
+games/         per-game profiles: games/<name>/game.json + images/   (demo ships)
+scripts/       add_game.py — scaffold a new game profile
+Test/          pytest suites (DailyMission, HeartSystem, player-profile) + self-check
+```
 
-| Path | Purpose |
-|------|---------|
-| `base/config.py` | `DEVICE_URI`, `APP_PACKAGE`, dirs — all env-overridable |
-| `base/conftest.py` | fixtures: connect device once, start/stop app, `infra_guard` |
-| `base/actions.py` | ONE import for all actions (`tap`/`swipe`/`wait_for`/...) + raw airtest re-exports + `is_infra_error` |
-| `base/tests/` | your testcases; copy `test_puzzle_smoke.py` as the pattern |
-| `base/images/` | template PNG crops you supply |
-| `base/results/` | infra-drop evidence (jsonl + screenshots); gitignored |
+### Deviations from the reference tree (deliberate)
+- `wrappers.py` is a **facade** re-exporting `actions`/`ocr`/`log` (was a god module).
+- `test_flow` lives in **`flows/`**, not `common/` — breaks the `common→pages→common` cycle.
+- Cases are **pytest**, not `.air` — one runner. `.air`/AirtestIDE deferred.
+- `ocr`, `adb_utils.cheat`, watchdog scans, minitouch socket are **stubs** — no game code yet.
+
+## Concurrency
+`common/sync.py` is the seam: every gesture takes `input_lock()`; watchdog threads
+register so a test can `with suppress_popups(): ...` while asserting on a dialog.
 
 ## Infra vs code failures
-`infra_guard` (autouse) wraps every test. If a test dies because adb/the emulator
-dropped (not its own `assert`), it's saved to `results/drops.jsonl` + a screenshot
-and reported as **skipped** (`INFRA DROP ...`) — so device flakiness never shows up
-as a red code failure. Real assertion failures still fail normally.
+`infra_guard` (autouse) wraps every test. adb/emulator drop (not an `assert`) →
+evidence to `results/drops.jsonl` + screenshot, reported **skipped** (`INFRA DROP`).
+Real assertion failures still fail normally.
