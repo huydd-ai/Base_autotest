@@ -13,4 +13,7 @@ def test_open_daily_mission(app):
     home = HomePage()
     home.wait_for("main_menu", timeout=30)
     # ... navigate to daily mission, then:
-    assert DailyMissionPage().wait_for("daily_mission_title", timeout=10)
+    page = DailyMissionPage()
+    assert page.wait_for("daily_mission_title", timeout=10)
+    # OCR text check (needs tesseract). region = (x1,y1,x2,y2) of the header.
+    page.assert_text("daily mission", region=(0, 0, 1080, 300))

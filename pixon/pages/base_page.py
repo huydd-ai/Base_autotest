@@ -22,3 +22,13 @@ class BasePage:
 
     def seen(self, target):
         return a.seen(target)
+
+    # OCR text checks (region = (x1,y1,x2,y2) or None for full screen)
+    def read_text(self, region=None):
+        return a.read_text(region)
+
+    def text_present(self, substring, region=None):
+        return a.text_present(substring, region)
+
+    def assert_text(self, substring, region=None):
+        return a.assert_text(substring, region)

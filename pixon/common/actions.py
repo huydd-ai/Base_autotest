@@ -1,20 +1,48 @@
-"""Airtest action facade: tap/swipe/wait_for/seen/shot over templates, plus
-the infra-vs-code classifier. Every input goes through `sync.input_lock` so
-watchdog threads and the test thread never tear each other's gestures.
+"""The one Airtest facade — every action the project uses, in one import.
 
-Template-aware wrappers accept a bare image name ("btn_play") OR a raw airtest
-target (a (x, y) pos or a Template). String -> IMAGE_DIR/<name>.png.
+- Gesture actions (touch/tap, swipe, double_tap, pinch, key, type_text) are routed
+  through `sync.input_lock` so watchdog threads and the test thread never interleave.
+- Non-input airtest actions (screenshot, wait, exists, app lifecycle, shell, ...) are
+  re-exported as-is.
+- Template-aware wrappers accept a bare image name ("btn_play") OR a raw target
+  (a (x, y) pos or a Template). String -> IMAGE_DIR/<name>.png.
+
+Use `import pixon.common.actions as a` in pages and tests.
 """
 import os
 
+# Raw airtest API. Gesture ones get aliased and re-wrapped below; the rest pass through.
 from airtest.core.api import (
-    Template, touch, swipe as _swipe, wait, exists, snapshot, sleep,
-    keyevent, text, home, double_click,
+    Template,
+    touch as _touch, swipe as _swipe, double_click as _double_click,
+    pinch as _pinch, keyevent as _keyevent, text as _text,
+    # non-input — re-exported directly
+    wait, exists, find_all, snapshot, sleep,
+    home, wake, start_app, stop_app, clear_app, install, uninstall,
+    shell, connect_device, device,
+    assert_exists, assert_not_exists,
 )
 
 from . import config
 from .sync import input_lock
 
+__all__ = [
+    # template-aware
+    "tap", "swipe", "double_tap", "wait_for", "seen", "shot",
+    # locked raw gestures
+    "touch", "pinch", "key", "type_text",
+    # passthrough
+    "Template", "wait", "exists", "find_all", "snapshot", "sleep",
+    "home", "wake", "start_app", "stop_app", "clear_app", "install", "uninstall",
+    "shell", "connect_device", "device", "assert_exists", "assert_not_exists",
+    # OCR (re-exported from common.ocr for one-stop import)
+    "read_text", "text_present", "assert_text",
+    # infra
+    "is_infra_error",
+]
+
+
+# ---- target resolution -------------------------------------------------------
 
 def _resolve(target):
     """str -> IMAGE_DIR/<name>.png Template; pos tuple / Template passed through."""
@@ -27,20 +55,32 @@ def _resolve(target):
     return target
 
 
-def wait_for(target, timeout=None):
-    return wait(_resolve(target), timeout=timeout or config.DEFAULT_TIMEOUT)
+def _pos(target, timeout):
+    """Resolve an image target to a screen pos (waiting), or pass a raw pos through."""
+    if isinstance(target, str):
+        return wait(_resolve(target), timeout=timeout or config.DEFAULT_TIMEOUT)
+    return _resolve(target)
 
+
+# ---- template-aware gestures (locked) ----------------------------------------
 
 def tap(target, timeout=None):
-    pos = wait(_resolve(target), timeout=timeout or config.DEFAULT_TIMEOUT) \
-        if isinstance(target, str) else _resolve(target)
     with input_lock():
-        return touch(pos)
+        return _touch(_pos(target, timeout))
+
+
+def double_tap(target, timeout=None):
+    with input_lock():
+        return _double_click(_pos(target, timeout))
 
 
 def swipe(start, end, **kw):
     with input_lock():
         return _swipe(_resolve(start), _resolve(end), **kw)
+
+
+def wait_for(target, timeout=None):
+    return wait(_resolve(target), timeout=timeout or config.DEFAULT_TIMEOUT)
 
 
 def seen(target):
@@ -49,6 +89,33 @@ def seen(target):
 
 def shot(path):
     return snapshot(filename=path if path.endswith(".png") else path + ".png")
+
+
+# ---- raw gestures, locked ----------------------------------------------------
+
+def touch(target, **kw):
+    with input_lock():
+        return _touch(_resolve(target), **kw)
+
+
+def pinch(*args, **kw):
+    with input_lock():
+        return _pinch(*args, **kw)
+
+
+def key(name):
+    with input_lock():
+        return _keyevent(name)
+
+
+def type_text(content, **kw):
+    with input_lock():
+        return _text(content, **kw)
+
+
+# ---- OCR (defined in common.ocr; surfaced here for one-stop import) ----------
+
+from .ocr import read_text, text_present, assert_text  # noqa: E402,F401
 
 
 # ---- infra vs code failure ---------------------------------------------------

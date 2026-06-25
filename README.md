@@ -56,7 +56,26 @@ Test/          pytest suites (DailyMission, HeartSystem, player-profile) + self-
 - `wrappers.py` is a **facade** re-exporting `actions`/`ocr`/`log` (was a god module).
 - `test_flow` lives in **`flows/`**, not `common/` — breaks the `common→pages→common` cycle.
 - Cases are **pytest**, not `.air` — one runner. `.air`/AirtestIDE deferred.
-- `ocr`, `adb_utils.cheat`, watchdog scans, minitouch socket are **stubs** — no game code yet.
+- `adb_utils.cheat`, watchdog scans, minitouch socket are **stubs** — no game code yet.
+- `ocr` is wired (pytesseract); `adb_utils.cheat`/minitouch still stubs.
+
+## OCR text checks
+All Airtest actions are surfaced through `pixon.common.actions` (one import); gesture
+calls (`tap`/`swipe`/`touch`/`pinch`/`key`/`type_text`) go through the input lock.
+
+Text assertions use OCR (pytesseract):
+```bash
+pip install -r requirements-ocr.txt     # + install the tesseract binary
+# Windows: https://github.com/UB-Mannheim/tesseract/wiki ; set TESSERACT_CMD if not on PATH
+```
+```python
+page.assert_text("daily mission", region=(0, 0, 1080, 300))   # raises if absent (a CODE failure)
+if page.text_present("level 5"): ...
+txt = page.read_text(region=(x1, y1, x2, y2))
+```
+`region` is `(x1,y1,x2,y2)` or `None` (full screen). Words below `OCR_THRESHOLD`
+confidence are dropped. OCR is optional — base install stays light; the engine
+lazy-loads with a clear error if not installed.
 
 ## Concurrency
 `common/sync.py` is the seam: every gesture takes `input_lock()`; watchdog threads

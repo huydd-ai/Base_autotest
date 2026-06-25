@@ -6,7 +6,7 @@ import os
 import pytest
 
 from pixon.common import actions as a
-from pixon.common import config, sync
+from pixon.common import config, sync, ocr
 
 
 # ---- template resolution ----
@@ -54,3 +54,18 @@ def test_suppress_watchdogs_pauses_and_resumes():
         assert wd.paused is False
     finally:
         sync.unregister_watchdog(wd)
+
+
+# ---- full action surface present ----
+def test_action_surface_exposed():
+    for fn in ("tap", "double_tap", "swipe", "touch", "pinch", "key", "type_text",
+               "wait_for", "seen", "shot", "wait", "exists", "snapshot",
+               "start_app", "stop_app", "shell", "read_text", "text_present", "assert_text"):
+        assert callable(getattr(a, fn)), f"missing action: {fn}"
+
+
+# ---- OCR pure logic (no engine, no device) ----
+def test_ocr_normalize_and_match():
+    assert ocr._normalize("  Hello   WORLD\n") == "hello world"
+    assert ocr._match("hello world", "...Hello   WORLD...")
+    assert not ocr._match("game over", "you win")
