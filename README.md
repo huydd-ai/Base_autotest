@@ -12,17 +12,24 @@ pip install -e .                         # make `pixon` importable
 cp .env.example .env                      # optional; edit values
 ```
 
-## Connect LDPlayer
-```bash
-adb connect 127.0.0.1:5555     # instance 0; instance 1 -> 5557, ...
-adb devices                    # should list 127.0.0.1:5555
-adb shell pm list packages | findstr <name>   # find APP_PACKAGE
-```
-Set `DEVICE_URI` / `APP_PACKAGE` via `.env` or env vars (defaults in `pixon/common/config.py`).
+## Add a game (the whole point)
+The framework is game-pluggable: shared page objects, **per-game profile + image pack**.
+Adding a game touches no framework code.
 
-## Add screenshots
-Crop real screens into `pixon/pages/images/` as PNGs, referenced by bare name
-(`main_menu`, `btn_play`, `board`, ...). Page objects and tests use those names.
+```bash
+adb connect 127.0.0.1:5555                          # LDPlayer instance 0
+adb shell pm list packages | findstr <name>         # find the package
+
+python scripts/add_game.py mygame --package com.foo.bar
+# -> creates games/mygame/game.json + games/mygame/images/
+```
+Then crop real screens into `games/mygame/images/` as PNGs, referenced by bare name
+(`main_menu`, `btn_play`, `board`, ...) in page objects/tests, and run:
+```bash
+GAME=mygame pytest          # Windows: set GAME=mygame && pytest
+```
+`GAME` selects the profile (default `demo`). `DEVICE_URI`/`APP_PACKAGE` env vars
+override the profile. A missing/half-set game fails loud at the `device` fixture.
 
 ## Run
 ```bash
@@ -40,6 +47,8 @@ pixon/
   pages/       Page Object Model (+ components/, popup/, images/)
   custom/      empty on purpose (YAGNI until a real override exists)
   airtouch_fast/  minitouch/minicap fast input (fallback: airtest touch)
+games/         per-game profiles: games/<name>/game.json + images/   (demo ships)
+scripts/       add_game.py — scaffold a new game profile
 Test/          pytest suites (DailyMission, HeartSystem, player-profile) + self-check
 ```
 

@@ -13,6 +13,7 @@ from pixon.common import actions, config, sync
 @pytest.fixture(scope="session")
 def device():
     """Connect to the emulator once for the whole run."""
+    config.require_game()          # fail loud if GAME profile/images missing
     return connect_device(config.DEVICE_URI)
 
 
